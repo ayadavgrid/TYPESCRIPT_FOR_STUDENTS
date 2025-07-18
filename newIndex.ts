@@ -1,9 +1,26 @@
 type Handler<T> = {
   next?: (value: T) => void;
-  error?: (error: any) => void;
+  error?: (error: Error) => void;
   complete?: () => void;
 };
-
+type HttpMethod = 'GET' | 'POST';
+interface User {
+  name: string;
+  age: number;
+  roles: string[];
+  createdAt: Date;
+  isDeleated: boolean;
+}
+interface RequestMock {
+  method: HttpMethod;
+  host: string;
+  path: string;
+  body?: User;
+  params: Record<string, string | number>;
+}
+interface ResponseMock {
+  status: number;
+}
 class Observer<T> {
   private handlers: Handler<T>;
   private isUnsubscribed: boolean;
@@ -13,14 +30,14 @@ class Observer<T> {
     this.handlers = handlers;
     this.isUnsubscribed = false;
   }
-
+  
   next(value: T): void {
     if (this.handlers.next && !this.isUnsubscribed) {
       this.handlers.next(value);
     }
   }
-
-  error(error: any): void {
+  
+  error(error: Error): void {
     if (!this.isUnsubscribed) {
       if (this.handlers.error) {
         this.handlers.error(error);
@@ -28,7 +45,7 @@ class Observer<T> {
       this.unsubscribe();
     }
   }
-
+  
   complete(): void {
     if (!this.isUnsubscribed) {
       if (this.handlers.complete) {
@@ -37,7 +54,7 @@ class Observer<T> {
       this.unsubscribe();
     }
   }
-
+  
   unsubscribe(): void {
     this.isUnsubscribed = true;
     if (this._unsubscribe) {
@@ -46,62 +63,39 @@ class Observer<T> {
   }
 }
 
+
 class Observable<T> {
   private _subscribe: (observer: Observer<T>) => (() => void) | void;
 
   constructor(subscribe: (observer: Observer<T>) => (() => void) | void) {
     this._subscribe = subscribe;
   }
-
   static from<T>(values: T[]): Observable<T> {
     return new Observable<T>((observer: Observer<T>) => {
       values.forEach((value) => observer.next(value));
       observer.complete();
 
       return () => {
-        console.log('unsubscribed');
+        console.log('Unsubscribed from the "from" array observable.');
       };
     });
   }
-
   subscribe(handlers: Handler<T>): { unsubscribe: () => void } {
     const observer = new Observer<T>(handlers);
     const unsubscribeFn = this._subscribe(observer);
-
-    if (unsubscribeFn) {
-      observer._unsubscribe = unsubscribeFn;
+    if (typeof unsubscribeFn === 'function') {
+        observer._unsubscribe = unsubscribeFn;
     }
-
     return {
       unsubscribe: () => observer.unsubscribe()
     };
   }
 }
-
-// Constants
-const HTTP_POST_METHOD = 'POST';
-const HTTP_GET_METHOD = 'GET';
-
+const HTTP_POST_METHOD: HttpMethod = 'POST';
+const HTTP_GET_METHOD: HttpMethod = 'GET';
 const HTTP_STATUS_OK = 200;
 const HTTP_STATUS_INTERNAL_SERVER_ERROR = 500;
-
-// Types
-type HttpMethod = 'GET' | 'POST';
-
-interface RequestMock {
-  method: HttpMethod;
-  host: string;
-  path: string;
-  body?: any;
-  params: Record<string, any>;
-}
-
-interface ResponseMock {
-  status: number;
-}
-
-// Data
-const userMock = {
+const userMock: User = {
   name: 'User Name',
   age: 26,
   roles: ['user', 'admin'],
@@ -127,23 +121,21 @@ const requestsMock: RequestMock[] = [
   }
 ];
 
-// Handlers
 const handleRequest = (request: RequestMock): ResponseMock => {
-  // handling of request
   console.log("Handling request:", request);
   return { status: HTTP_STATUS_OK };
 };
 
-const handleError = (error: any): ResponseMock => {
-  // handling of error
-  console.error("Error occurred:", error);
+const handleError = (error: Error): ResponseMock => {
+  console.error("An error occurred:", error.message);
   return { status: HTTP_STATUS_INTERNAL_SERVER_ERROR };
 };
 
-const handleComplete = (): void => console.log('complete');
+const handleComplete = (): void => console.log('Processing complete.');
 
-// Execution
 const requests$ = Observable.from<RequestMock>(requestsMock);
+
+console.log('Subscribing to requests stream...');
 
 const subscription = requests$.subscribe({
   next: handleRequest,
@@ -151,4 +143,20 @@ const subscription = requests$.subscribe({
   complete: handleComplete,
 });
 
+console.log('Unsubscribing immediately.');
+
 subscription.unsubscribe();
+
+console.log('\n--- Demonstrating error handling ---');
+
+const erroringObservable = new Observable<RequestMock>(observer => {
+    observer.next(requestsMock[0]);
+    observer.error(new Error("Something went wrong during the stream!"));
+    observer.next(requestsMock[1]); 
+});
+
+erroringObservable.subscribe({
+    next: handleRequest,
+    error: handleError,
+    complete: handleComplete,
+});
